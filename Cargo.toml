@@ -36,7 +36,7 @@ cairo-lang-starknet-classes = { version = "=2.8.2" }
 cairo-lang-utils = { version = "=2.8.2" }
 cairo-lang-casm = { version = "=2.8.2" }
 cairo-type-derive = { version = "0.1.0", path = "crates/cairo-type-derive" }
-cairo-vm = { git = "https://github.com/Moonsong-Labs/cairo-vm", branch = "notlesh/snos-2024-11-04", features = ["cairo-1-hints", "extensive_hints", "mod_builtin"] }
+cairo-vm = { git = "https://github.com/chudkowsky/cairo-vm", branch = "notlesh/snos-2024-11-04", features = ["cairo-1-hints", "extensive_hints", "mod_builtin"] }
 clap = { version = "4.5.4", features = ["derive"] }
 c-kzg = { version = "1.0.3" }
 env_logger = "0.11.3"
@@ -58,7 +58,7 @@ pathfinder-common = { git = "https://github.com/Moonsong-Labs/pathfinder", rev =
 pathfinder-crypto = { git = "https://github.com/Moonsong-Labs/pathfinder", rev = "9c19d9a37be8f447ec4548456c440ccbd0e44260", package = "pathfinder-crypto" }
 pathfinder-gateway-types = { git = "https://github.com/Moonsong-Labs/pathfinder", rev = "9c19d9a37be8f447ec4548456c440ccbd0e44260", package = "starknet-gateway-types" }
 pathfinder-serde = { git = "https://github.com/Moonsong-Labs/pathfinder", rev = "9c19d9a37be8f447ec4548456c440ccbd0e44260", package = "pathfinder-serde" }
-reqwest = { version = "0.11.18", features = ["blocking", "json"] }
+reqwest = { version = "0.12.9", features = ["blocking", "json"] }
 rpc-client = { path = "crates/rpc-client" }
 rpc-replay = { path = "crates/rpc-replay" }
 serde = { version = "1.0.188", features = ["derive"] }

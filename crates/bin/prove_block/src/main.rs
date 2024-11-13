@@ -1,4 +1,4 @@
-use cairo_vm::types::layout_name::LayoutName;
+pub use cairo_vm::types::layout_name::LayoutName;
 use clap::Parser;
 use prove_block::{debug_prove_error, DEFAULT_COMPILED_OS};
 
