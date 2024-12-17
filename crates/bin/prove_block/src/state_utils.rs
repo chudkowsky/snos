@@ -140,7 +140,7 @@ fn add_compiled_class_to_os_input(
 
     // Remove deprecated classes from HashMap
     if matches!(&compiled_class, GenericCompiledClass::Cairo0(_)) {
-        log::warn!("Skipping deprecated class for ch_to_cch: 0x{:x}", class_hash);
+        tracing::warn!("Skipping deprecated class for ch_to_cch: 0x{:x}", class_hash);
     } else {
         class_hash_to_compiled_class_hash.insert(class_hash, compiled_class_hash.into());
     }

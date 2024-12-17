@@ -173,8 +173,7 @@ pub fn assert_transaction_hash(
     let tx = exec_scopes.get::<InternalTransaction>(vars::scopes::TX)?;
     let transaction_hash = get_integer_from_var_name(vars::ids::TRANSACTION_HASH, vm, ids_data, ap_tracking)?;
 
-    println!("tx.hash_value: {}, transaction_hash: {}", tx.hash_value.to_biguint(), transaction_hash.to_biguint());
-
+    
     assert_eq!(
         tx.hash_value,
         transaction_hash,

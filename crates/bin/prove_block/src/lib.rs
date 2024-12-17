@@ -106,8 +106,8 @@ fn compute_class_commitment(
     let class_commitment_facts: HashMap<_, _> =
         previous_class_commitment_facts.into_iter().chain(current_class_commitment_facts).collect();
 
-    log::debug!("previous class trie root: {}", previous_root.to_hex_string());
-    log::debug!("current class trie root: {}", updated_root.to_hex_string());
+    tracing::debug!("previous class trie root: {}", previous_root.to_hex_string());
+    tracing::debug!("current class trie root: {}", updated_root.to_hex_string());
 
     CommitmentInfo { previous_root, updated_root, tree_height: 251, commitment_facts: class_commitment_facts }
 }
@@ -126,7 +126,7 @@ pub async fn prove_block(
 
     // Step 1: build the block context
     let chain_id = chain_id_from_felt(rpc_client.starknet_rpc().chain_id().await?);
-    log::debug!("provider's chain_id: {}", chain_id);
+    tracing::debug!("provider's chain_id: {}", chain_id);
 
     let block_with_txs = match rpc_client.starknet_rpc().get_block_with_txs(block_id).await? {
         MaybePendingBlockWithTxs::Block(block_with_txs) => block_with_txs,
@@ -136,7 +136,7 @@ pub async fn prove_block(
     };
 
     let starknet_version = get_starknet_version(&block_with_txs);
-    log::debug!("Starknet version: {:?}", starknet_version);
+    tracing::debug!("Starknet version: {:?}", starknet_version);
 
     let previous_block = match rpc_client.starknet_rpc().get_block_with_tx_hashes(previous_block_id).await? {
         MaybePendingBlockWithTxHashes::Block(block_with_txs) => block_with_txs,
@@ -220,7 +220,7 @@ pub async fn prove_block(
             .unwrap_or(Felt::ZERO)
             .into();
 
-        log::debug!(
+        tracing::debug!(
             "Storage root 0x{:x} for contract 0x{:x}",
             Into::<Felt252>::into(contract_storage_root),
             contract_address
@@ -361,13 +361,13 @@ pub async fn prove_block(
 pub fn debug_prove_error(err: ProveBlockError) -> ProveBlockError {
     if let ProveBlockError::SnOsError(SnOsError::Runner(CairoRunError::VmException(vme))) = &err {
         if let Some(traceback) = vme.traceback.as_ref() {
-            log::error!("traceback:\n{}", traceback);
+            tracing::error!("traceback:\n{}", traceback);
         }
         if let Some(inst_location) = &vme.inst_location {
-            log::error!("died at: {}:{}", inst_location.input_file.filename, inst_location.start_line);
-            log::error!("inst_location:\n{:?}", inst_location);
+            tracing::error!("died at: {}:{}", inst_location.input_file.filename, inst_location.start_line);
+            tracing::error!("inst_location:\n{:?}", inst_location);
         }
-        log::error!("\ninner_exc error: {}\n", vme.inner_exc);
+        tracing::error!("\ninner_exc error: {}\n", vme.inner_exc);
     }
     err
 }

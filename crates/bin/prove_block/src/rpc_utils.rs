@@ -92,7 +92,7 @@ fn verify_storage_proof(contract_data: &ContractData, keys: &[Felt]) -> Vec<Felt
                     if let Some(TrieNode::Edge { child: _, path }) = proof.last() {
                         if height.0 < DEFAULT_STORAGE_TREE_HEIGHT {
                             let modified_key = get_key_following_edge(key, height, path);
-                            log::trace!(
+                            tracing::trace!(
                                 "Fetching modified key {} for key {}",
                                 modified_key.to_hex_string(),
                                 key.to_hex_string()
@@ -126,9 +126,9 @@ pub(crate) async fn get_storage_proofs(
 
     let mut storage_proofs = HashMap::new();
 
-    log::info!("Contracts we're fetching proofs for:");
+    tracing::info!("Contracts we're fetching proofs for:");
     for (contract_address, storage_keys) in accessed_keys_by_address {
-        log::info!("    Fetching proof for {}", contract_address.to_string());
+        tracing::info!("    Fetching proof for {}", contract_address.to_string());
         let contract_address_felt = *contract_address.key();
         let storage_proof =
             get_storage_proof_for_contract(client, contract_address, storage_keys.into_iter(), block_number).await?;

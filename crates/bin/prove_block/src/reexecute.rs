@@ -72,14 +72,14 @@ pub fn reexecute_transactions_with_blockifier<S: StateReader>(
                 }
                 Ok(info) => {
                     if info.is_reverted() {
-                        log::warn!(
+                        tracing::warn!(
                             "Transaction {:x} ({}/{}) reverted: {:?}",
                             tx_hash.0,
                             index + 1,
                             n_txs,
                             info.revert_error
                         );
-                        log::warn!("TransactionExecutionInfo: {:?}", info);
+                        tracing::warn!("TransactionExecutionInfo: {:?}", info);
                     }
                     info
                 }
