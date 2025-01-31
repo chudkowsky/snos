@@ -65,7 +65,7 @@ pub fn reexecute_transactions_with_blockifier<S: StateReader>(
         .enumerate()
         .map(|(index, tx)| {
             let tx_hash = get_tx_hash(&tx);
-            let tx_result = tx.execute(state, block_context, true, true);
+            let tx_result = tx.execute(state, block_context, true, true, true);
             match tx_result {
                 Err(e) => {
                     panic!("Transaction {:x} ({}/{}) failed in blockifier: {}", tx_hash.0, index + 1, n_txs, e);

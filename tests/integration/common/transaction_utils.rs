@@ -850,7 +850,7 @@ where
         .enumerate()
         .map(|(index, tx)| {
             let tx_hash = get_tx_hash(&tx).to_hex_string();
-            let tx_result = tx.execute(&mut state, block_context, true, true);
+            let tx_result = tx.execute(&mut state, block_context, true, true, true);
             match tx_result {
                 Err(e) => {
                     panic!("Transaction {} ({}/{}) failed in blockifier: {}", tx_hash, index + 1, n_txs, e);

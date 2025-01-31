@@ -494,7 +494,7 @@ fn execute_transaction(
     cached_state: &mut CachedState<SharedState<DictStorage, PedersenHash>>,
     block_context: &BlockContext,
 ) -> TransactionExecutionInfo {
-    let tx_result = tx.execute(cached_state, block_context, true, true);
+    let tx_result = tx.execute(cached_state, block_context, true, true, true);
     match tx_result {
         Err(e) => {
             log::error!("Transaction failed in blockifier: {}", e);
