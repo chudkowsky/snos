@@ -263,7 +263,6 @@ pub fn decompress(compressed: &mut impl Iterator<Item = BigUint>) -> Vec<BigUint
         let mut compressed_chunk = Vec::new();
         for _ in 0..n_packed_felts {
             if let Some(felt) = compressed.next() {
-                dbg!(&felt);
                 compressed_chunk.push(felt);
             }
         }
