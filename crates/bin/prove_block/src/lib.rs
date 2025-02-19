@@ -119,6 +119,8 @@ pub async fn prove_block(
     layout: LayoutName,
     full_output: bool,
 ) -> Result<(CairoPie, StarknetOsOutput), ProveBlockError> {
+    log::info!("Preparing inputs for block {}", block_number);
+
     let block_id = BlockId::Number(block_number);
     let previous_block_id = if block_number == 0 { None } else { Some(BlockId::Number(block_number - 1)) };
 
@@ -379,7 +381,13 @@ pub async fn prove_block(
         (old_block_number, old_block_hash),
     );
 
-    Ok(run_os(compiled_os, layout, os_input, block_context, execution_helper)?)
+    log::info!("Running OS for block {}", block_number);
+
+    let os_output = run_os(compiled_os, layout, os_input, block_context, execution_helper)?;
+
+    log::info!("OS finished running for block {}", block_number);
+
+    Ok(os_output)
 }
 
 pub fn debug_prove_error(err: ProveBlockError) -> ProveBlockError {

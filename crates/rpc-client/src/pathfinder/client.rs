@@ -66,7 +66,7 @@ pub struct PathfinderRpcClient {
 impl PathfinderRpcClient {
     pub fn new(base_url: &str) -> Self {
         let starknet_rpc_url = base_url.to_string();
-        log::info!("Starknet RPC URL: {}", starknet_rpc_url);
+        log::trace!("Starknet RPC URL: {}", starknet_rpc_url);
         let http_client =
             reqwest::ClientBuilder::new().build().unwrap_or_else(|e| panic!("Could not build reqwest client: {e}"));
 
