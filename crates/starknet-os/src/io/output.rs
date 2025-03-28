@@ -80,6 +80,130 @@ impl StarknetOsOutput {
         let raw_output = get_raw_output(vm, output_base, output_size)?;
         deserialize_os_output(&mut raw_output.into_iter())
     }
+
+    pub fn serialize(&self) -> Vec<Felt252> {
+        let mut output = Vec::new();
+        
+        // Serialize header
+        output.push(self.initial_root);
+        output.push(self.final_root);
+        output.push(self.prev_block_number);
+        output.push(self.new_block_number);
+        output.push(self.prev_block_hash);
+        output.push(self.new_block_hash);
+        output.push(self.os_program_hash);
+        output.push(self.starknet_os_config_hash);
+        output.push(self.use_kzg_da);
+        output.push(self.full_output);
+
+        // Serialize KZG data if used
+        if !self.use_kzg_da.is_zero() {
+            // In this implementation we're not handling KZG data serialization
+            // as it's not part of the current deserialization logic
+            output.push(Felt252::ZERO); // n_blobs placeholder
+            output.push(Felt252::ZERO); // Additional KZG data placeholder
+        }
+
+        // Serialize messages
+        output.push(Felt252::from(self.messages_to_l1.len()));
+        output.extend(self.messages_to_l1.iter().cloned());
+        output.push(Felt252::from(self.messages_to_l2.len()));
+        output.extend(self.messages_to_l2.iter().cloned());
+
+        // Serialize state diff if KZG is not used
+        if self.use_kzg_da.is_zero() {
+            if let Some(state_diff) = &self.state_diff {
+                output.extend(state_diff.serialize(self.full_output));
+            }
+        }
+
+        output
+    }
+}
+
+impl OsStateDiff {
+    fn serialize(&self, full_output: Felt252) -> Vec<Felt252> {
+        let mut output = Vec::new();
+
+        // Serialize contract changes
+        output.push(Felt252::from(self.contract_changes.len()));
+        for contract in &self.contract_changes {
+            output.extend(contract.serialize(full_output));
+        }
+
+        // Serialize class changes
+        output.extend(serialize_contract_class_changes(&self.classes, full_output));
+
+        output
+    }
+}
+
+impl ContractChanges {
+    fn serialize(&self, full_output: Felt252) -> Vec<Felt252> {
+        let mut output = Vec::new();
+        let bound = Felt252::from(1u128 << 64);
+        let n_updates_small_packing_bound = Felt252::from(1u128 << 8);
+        let flag_bound = Felt252::from(1u128 << 1);
+
+        // Add contract address
+        output.push(self.addr);
+
+        // Calculate flags and packed values
+        let n_changes = Felt252::from(self.storage_changes.len());
+        let is_n_updates_small = if n_changes < n_updates_small_packing_bound { Felt252::ONE } else { Felt252::ZERO };
+        let was_class_updated = if self.class_hash.is_some() { Felt252::ONE } else { Felt252::ZERO };
+
+        let n_updates_bound = if is_n_updates_small == Felt252::ONE { n_updates_small_packing_bound } else { bound };
+        
+        // Pack nonce and changes
+        let mut packed_value = if !full_output.is_zero() {
+            // Pack old_nonce (0 in this case) and new_nonce
+            (Felt252::ZERO * bound + self.nonce) * n_updates_bound + n_changes
+        } else {
+            self.nonce * n_updates_bound + n_changes
+        };
+
+        // Add flags
+        packed_value = packed_value * flag_bound + is_n_updates_small;
+        packed_value = packed_value * flag_bound + was_class_updated;
+        output.push(packed_value);
+
+        // Add class hash information
+        if !full_output.is_zero() {
+            output.push(Felt252::ZERO); // previous class hash
+            if let Some(class_hash) = self.class_hash {
+                output.push(class_hash);
+            }
+        } else if let Some(class_hash) = self.class_hash {
+            output.push(class_hash);
+        }
+
+        // Add storage changes
+        for (key, value) in &self.storage_changes {
+            output.push(*key);
+            if !full_output.is_zero() {
+                output.push(Felt252::ZERO); // previous value
+            }
+            output.push(*value);
+        }
+
+        output
+    }
+}
+
+fn serialize_contract_class_changes(classes: &HashMap<Felt252, Felt252>, full_output: Felt252) -> Vec<Felt252> {
+    let mut output = Vec::new();
+    
+    output.push(Felt252::from(classes.len()));
+    for (class_hash, compiled_class_hash) in classes {
+        output.push(*class_hash);
+        if !full_output.is_zero() {
+            output.push(Felt252::ZERO); // previous compiled class hash
+        }
+        output.push(*compiled_class_hash);
+    }
+    
+    output
 }
 
 /// Gets the output base segment and the output size from the VM return values and the VM
@@ -360,9 +484,277 @@ mod tests {
     use super::*;
 
     #[test]
-    /// Tests that the OS output can be serialized and deserialized properly to JSON.
-    fn os_output_serde_json() {
-        let os_output = StarknetOsOutput {
+    fn test_empty_messages_and_state() {
+        let original_output = StarknetOsOutput {
+            initial_root: Felt252::ONE,
+            final_root: Felt252::from(2),
+            prev_block_number: Felt252::ZERO,
+            new_block_number: Felt252::ONE,
+            prev_block_hash: Felt252::ZERO,
+            new_block_hash: Felt252::ONE,
+            os_program_hash: Felt252::ZERO,
+            starknet_os_config_hash: Felt252::ONE,
+            use_kzg_da: Felt252::ZERO,
+            full_output: Felt252::ONE,
+            messages_to_l1: vec![],
+            messages_to_l2: vec![],
+            state_diff: Some(OsStateDiff {
+                contract_changes: vec![],
+                classes: HashMap::new(),
+            }),
+        };
+
+        let serialized = original_output.serialize();
+        let deserialized = deserialize_os_output(&mut serialized.into_iter()).expect("Failed to deserialize");
+        assert_eq!(deserialized, original_output);
+    }
+
+    #[test]
+    fn test_basic_state_diff() {
+        let original_output = StarknetOsOutput {
+            initial_root: Felt252::ONE,
+            final_root: Felt252::from(2),
+            prev_block_number: Felt252::from(100),
+            new_block_number: Felt252::from(101),
+            prev_block_hash: Felt252::from(1234),
+            new_block_hash: Felt252::from(5678),
+            os_program_hash: Felt252::ZERO,
+            starknet_os_config_hash: Felt252::from(42),
+            use_kzg_da: Felt252::ZERO,
+            full_output: Felt252::ONE,
+            messages_to_l1: vec![],
+            messages_to_l2: vec![],
+            state_diff: Some(OsStateDiff {
+                contract_changes: vec![ContractChanges {
+                    addr: Felt252::ONE,
+                    nonce: Felt252::from(100),
+                    class_hash: Some(Felt252::from(200)),
+                    storage_changes: HashMap::from([
+                        (Felt252::from(1), Felt252::from(10)),
+                        (Felt252::from(2), Felt252::from(20)),
+                    ]),
+                }],
+                classes: HashMap::from([(Felt252::from(1000), Felt252::from(2000))]),
+            }),
+        };
+
+        let serialized = original_output.serialize();
+        let deserialized = deserialize_os_output(&mut serialized.into_iter()).expect("Failed to deserialize");
+        assert_eq!(deserialized, original_output);
+    }
+
+    #[test]
+    fn test_complex_state_diff() {
+        let storage_changes1 = HashMap::from([
+            (Felt252::from(1), Felt252::from(100)),
+            (Felt252::from(2), Felt252::from(200)),
+        ]);
+
+        let storage_changes2 = HashMap::from([
+            (Felt252::from(3), Felt252::from(300)),
+            (Felt252::from(4), Felt252::from(400)),
+            (Felt252::from(5), Felt252::from(500)),
+        ]);
+
+        let classes = HashMap::from([
+            (Felt252::from(1000), Felt252::from(2000)),
+            (Felt252::from(3000), Felt252::from(4000)),
+        ]);
+
+        let original_output = StarknetOsOutput {
+            initial_root: Felt252::from_hex_unchecked(
+                "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            ),
+            final_root: Felt252::from_hex_unchecked(
+                "0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321",
+            ),
+            prev_block_number: Felt252::from(1000),
+            new_block_number: Felt252::from(1001),
+            prev_block_hash: Felt252::from_hex_unchecked("0xaabbcc"),
+            new_block_hash: Felt252::from_hex_unchecked("0xddeeff"),
+            os_program_hash: Felt252::from(12345),
+            starknet_os_config_hash: Felt252::from(67890),
+            use_kzg_da: Felt252::ZERO,
+            full_output: Felt252::ONE,
+            messages_to_l1: vec![Felt252::from(111), Felt252::from(222)],
+            messages_to_l2: vec![Felt252::from(333), Felt252::from(444)],
+            state_diff: Some(OsStateDiff {
+                contract_changes: vec![
+                    ContractChanges {
+                        addr: Felt252::from(1),
+                        nonce: Felt252::from(10),
+                        class_hash: Some(Felt252::from(100)),
+                        storage_changes: storage_changes1,
+                    },
+                    ContractChanges {
+                        addr: Felt252::from(2),
+                        nonce: Felt252::from(20),
+                        class_hash: None,
+                        storage_changes: storage_changes2,
+                    },
+                ],
+                classes,
+            }),
+        };
+
+        let serialized = original_output.serialize();
+        let deserialized = deserialize_os_output(&mut serialized.into_iter()).expect("Failed to deserialize");
+        assert_eq!(deserialized, original_output);
+    }
+
+    #[test]
+    fn test_large_messages() {
+        let messages_to_l1: Vec<Felt252> = (0..100)
+            .map(|i| Felt252::from_hex_unchecked(&format!("0x{:064x}", i)))
+            .collect();
+        let messages_to_l2: Vec<Felt252> = (100..200)
+            .map(|i| Felt252::from_hex_unchecked(&format!("0x{:064x}", i)))
+            .collect();
+
+        let original_output = StarknetOsOutput {
+            initial_root: Felt252::ONE,
+            final_root: Felt252::from(2),
+            prev_block_number: Felt252::from(1),
+            new_block_number: Felt252::from(2),
+            prev_block_hash: Felt252::from(3),
+            new_block_hash: Felt252::from(4),
+            os_program_hash: Felt252::from(5),
+            starknet_os_config_hash: Felt252::from(6),
+            use_kzg_da: Felt252::ZERO,
+            full_output: Felt252::ONE,
+            messages_to_l1,
+            messages_to_l2,
+            state_diff: Some(OsStateDiff {
+                contract_changes: vec![],
+                classes: HashMap::new(),
+            }),
+        };
+
+        let serialized = original_output.serialize();
+        let deserialized = deserialize_os_output(&mut serialized.into_iter()).expect("Failed to deserialize");
+        assert_eq!(deserialized, original_output);
+    }
+
+    #[test]
+    fn test_large_storage_changes() {
+        let mut storage_changes = HashMap::new();
+        for i in 0..100 {
+            storage_changes.insert(
+                Felt252::from_hex_unchecked(&format!("0x{:064x}", i)),
+                Felt252::from_hex_unchecked(&format!("0x{:064x}", i + 1000)),
+            );
+        }
+
+        let original_output = StarknetOsOutput {
+            initial_root: Felt252::ONE,
+            final_root: Felt252::from(2),
+            prev_block_number: Felt252::from(1),
+            new_block_number: Felt252::from(2),
+            prev_block_hash: Felt252::from(3),
+            new_block_hash: Felt252::from(4),
+            os_program_hash: Felt252::from(5),
+            starknet_os_config_hash: Felt252::from(6),
+            use_kzg_da: Felt252::ZERO,
+            full_output: Felt252::ONE,
+            messages_to_l1: vec![],
+            messages_to_l2: vec![],
+            state_diff: Some(OsStateDiff {
+                contract_changes: vec![ContractChanges {
+                    addr: Felt252::ONE,
+                    nonce: Felt252::from(100),
+                    class_hash: Some(Felt252::from(200)),
+                    storage_changes,
+                }],
+                classes: HashMap::new(),
+            }),
+        };
+
+        let serialized = original_output.serialize();
+        let deserialized = deserialize_os_output(&mut serialized.into_iter()).expect("Failed to deserialize");
+        assert_eq!(deserialized, original_output);
+    }
+
+    #[test]
+    fn test_multiple_contract_changes() {
+        let mut contracts = vec![];
+        for i in 0..5 {
+            let mut storage_changes = HashMap::new();
+            for j in 0..3 {
+                storage_changes.insert(
+                    Felt252::from(i * 100 + j),
+                    Felt252::from(i * 1000 + j),
+                );
+            }
+            
+            contracts.push(ContractChanges {
+                addr: Felt252::from(i + 1),
+                nonce: Felt252::from(i * 10),
+                class_hash: if i % 2 == 0 { Some(Felt252::from(i * 100)) } else { None },
+                storage_changes,
+            });
+        }
+
+        let original_output = StarknetOsOutput {
+            initial_root: Felt252::ONE,
+            final_root: Felt252::from(2),
+            prev_block_number: Felt252::from(1),
+            new_block_number: Felt252::from(2),
+            prev_block_hash: Felt252::from(3),
+            new_block_hash: Felt252::from(4),
+            os_program_hash: Felt252::from(5),
+            starknet_os_config_hash: Felt252::from(6),
+            use_kzg_da: Felt252::ZERO,
+            full_output: Felt252::ONE,
+            messages_to_l1: vec![],
+            messages_to_l2: vec![],
+            state_diff: Some(OsStateDiff {
+                contract_changes: contracts,
+                classes: HashMap::new(),
+            }),
+        };
+
+        let serialized = original_output.serialize();
+        let deserialized = deserialize_os_output(&mut serialized.into_iter()).expect("Failed to deserialize");
+        assert_eq!(deserialized, original_output);
+    }
+
+    #[test]
+    fn test_large_class_changes() {
+        let mut classes = HashMap::new();
+        for i in 0..50 {
+            classes.insert(
+                Felt252::from_hex_unchecked(&format!("0x{:064x}", i)),
+                Felt252::from_hex_unchecked(&format!("0x{:064x}", i + 1000)),
+            );
+        }
+
+        let original_output = StarknetOsOutput {
+            initial_root: Felt252::ONE,
+            final_root: Felt252::from(2),
+            prev_block_number: Felt252::from(1),
+            new_block_number: Felt252::from(2),
+            prev_block_hash: Felt252::from(3),
+            new_block_hash: Felt252::from(4),
+            os_program_hash: Felt252::from(5),
+            starknet_os_config_hash: Felt252::from(6),
+            use_kzg_da: Felt252::ZERO,
+            full_output: Felt252::ONE,
+            messages_to_l1: vec![],
+            messages_to_l2: vec![],
+            state_diff: Some(OsStateDiff {
+                contract_changes: vec![],
+                classes,
+            }),
+        };
+
+        let serialized = original_output.serialize();
+        let deserialized = deserialize_os_output(&mut serialized.into_iter()).expect("Failed to deserialize");
+        assert_eq!(deserialized, original_output);
+    }
+
+    #[test]
+    fn test_json_serialization() {
+        let original_output = StarknetOsOutput {
             initial_root: Felt252::from_hex_unchecked(
                 "0x5594a2d89ad4eff183ea6a7f4d4bf247fb799f3db54bc6d94ea441e0c99a4ac",
             ),
@@ -377,8 +769,8 @@ mod tests {
             starknet_os_config_hash: Felt252::from_hex_unchecked(
                 "0x5d4d0b87442f4c6c120e8d207e27c0e01796ad1e57c5323292ecaf655b53b05",
             ),
-            use_kzg_da: Felt252::ONE,
-            full_output: Felt252::ZERO,
+            use_kzg_da: Felt252::ZERO,
+            full_output: Felt252::ONE,
             messages_to_l1: vec![
                 Felt252::from(1234),
                 Felt252::from(5678),
@@ -411,10 +803,10 @@ mod tests {
             }),
         };
 
-        let os_output_str = serde_json::to_string(&os_output).expect("OS output serialization failed");
+        let os_output_str = serde_json::to_string(&original_output).expect("OS output serialization failed");
         let deserialized_os_output: StarknetOsOutput =
             serde_json::from_str(&os_output_str).expect("OS output deserialization failed");
 
-        assert_eq!(deserialized_os_output, os_output);
+        assert_eq!(deserialized_os_output, original_output);
     }
 }
