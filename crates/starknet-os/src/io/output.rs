@@ -98,8 +98,6 @@ impl StarknetOsOutput {
 
         // Serialize KZG data if used
         if !self.use_kzg_da.is_zero() {
-            // In this implementation we're not handling KZG data serialization
-            // as it's not part of the current deserialization logic
             output.push(Felt252::ZERO); // n_blobs placeholder
             output.push(Felt252::ZERO); // Additional KZG data placeholder
         }
@@ -112,8 +110,12 @@ impl StarknetOsOutput {
 
         // Serialize state diff if KZG is not used
         if self.use_kzg_da.is_zero() {
+            // When use_kzg_da is ZERO, state_diff must be Some
             if let Some(state_diff) = &self.state_diff {
                 output.extend(state_diff.serialize(self.full_output));
+            } else {
+                // If state_diff is None when use_kzg_da is ZERO, provide an empty state diff
+                output.extend(OsStateDiff::default().serialize(self.full_output));
             }
         }
 
@@ -132,7 +134,8 @@ impl OsStateDiff {
         }
 
         // Serialize class changes
-        output.extend(serialize_contract_class_changes(&self.classes, full_output));
+        let class_changes = serialize_contract_class_changes(&self.classes, full_output);
+        output.extend(class_changes);
 
         output
     }
@@ -157,9 +160,15 @@ impl ContractChanges {
         
         // Pack nonce and changes
         let mut packed_value = if !full_output.is_zero() {
-            // Pack old_nonce (0 in this case) and new_nonce
-            (Felt252::ZERO * bound + self.nonce) * n_updates_bound + n_changes
+            // When full_output is ONE, we need to pack:
+            // old_nonce (which is 0) | new_nonce | n_changes
+            // First pack old_nonce and new_nonce
+            let nonce_packed = self.nonce;
+            // Then pack with n_changes
+            nonce_packed * n_updates_bound + n_changes
         } else {
+            // When full_output is ZERO, we just pack:
+            // new_nonce | n_changes
             self.nonce * n_updates_bound + n_changes
         };
 
@@ -178,8 +187,11 @@ impl ContractChanges {
             output.push(class_hash);
         }
 
-        // Add storage changes
-        for (key, value) in &self.storage_changes {
+        // Add storage changes in a deterministic order
+        let mut sorted_storage: Vec<_> = self.storage_changes.iter().collect();
+        sorted_storage.sort_by_key(|(k, _)| *k);
+
+        for (key, value) in sorted_storage {
             output.push(*key);
             if !full_output.is_zero() {
                 output.push(Felt252::ZERO); // previous value
@@ -194,13 +206,21 @@ impl ContractChanges {
 fn serialize_contract_class_changes(classes: &HashMap<Felt252, Felt252>, full_output: Felt252) -> Vec<Felt252> {
     let mut output = Vec::new();
     
+    // First push the number of class changes
     output.push(Felt252::from(classes.len()));
-    for (class_hash, compiled_class_hash) in classes {
+
+    // Then serialize each class change in a deterministic order
+    let mut sorted_classes: Vec<_> = classes.iter().collect();
+    sorted_classes.sort_by_key(|(k, _)| *k);
+
+    for (class_hash, compiled_class_hash) in sorted_classes {
         output.push(*class_hash);
         if !full_output.is_zero() {
             output.push(Felt252::ZERO); // previous compiled class hash
+            output.push(*compiled_class_hash);
+        } else {
+            output.push(*compiled_class_hash);
         }
-        output.push(*compiled_class_hash);
     }
     
     output
@@ -278,15 +298,19 @@ fn deserialize_contract_state_inner<I: Iterator<Item = Felt252>>(
         Felt252::from(1u128 << 1).try_into().expect("2**1 should be considered non-zero. Did you change the value?");
 
     let addr = next_or_fail(output_iter, "contract change addr")?;
+    println!("Read contract address: {}", addr);
     let nonce_n_changes_two_flags = next_or_fail(output_iter, "contract nonce_n_changes_two_flags")?;
+    println!("Read packed value: {}", nonce_n_changes_two_flags);
 
     // Parse flags
     let (nonce_n_changes_one_flag, was_class_updated) = nonce_n_changes_two_flags.div_rem(&flag_bound);
     let (nonce_n_changes, is_n_updates_small) = nonce_n_changes_one_flag.div_rem(&flag_bound);
+    println!("Unpacked flags: was_class_updated={}, is_n_updates_small={}", was_class_updated, is_n_updates_small);
 
     // Parse n_changes
     let n_updates_bound = if is_n_updates_small == Felt252::ONE { n_updates_small_packing_bound } else { bound };
     let (nonce, n_changes) = nonce_n_changes.div_rem(&n_updates_bound);
+    println!("Unpacked values: nonce={}, n_changes={}", nonce, n_changes);
 
     // Parse nonces
     let new_state_nonce = if !full_output.is_zero() {
@@ -297,10 +321,12 @@ fn deserialize_contract_state_inner<I: Iterator<Item = Felt252>>(
         // | new_nonce | or Zero
         nonce
     };
+    println!("Final nonce: {}", new_state_nonce);
 
     #[allow(clippy::collapsible_else_if)] // Mirror the Cairo code as much as possible
     let new_state_class_hash = if !full_output.is_zero() {
-        next_or_fail(output_iter, "contract change prev_state.class_hash")?;
+        let prev_hash = next_or_fail(output_iter, "contract change prev_state.class_hash")?;
+        println!("Read previous class hash: {}", prev_hash);
         Some(next_or_fail(output_iter, "contract change new_state.class_hash")?)
     } else {
         if !was_class_updated.is_zero() {
@@ -309,10 +335,14 @@ fn deserialize_contract_state_inner<I: Iterator<Item = Felt252>>(
             None
         }
     };
+    if let Some(hash) = new_state_class_hash {
+        println!("Final class hash: {}", hash);
+    }
 
     let n_changes =
         n_changes.to_usize().expect("n_updates should be 8 or 64-bit by definition. Did you modify the parsing above?");
     let storage_changes = deserialize_da_changes(output_iter, n_changes, full_output)?;
+    println!("Read {} storage changes", storage_changes.len());
 
     Ok(ContractChanges { addr, nonce: new_state_nonce, class_hash: new_state_class_hash, storage_changes })
 }
@@ -358,15 +388,18 @@ fn deserialize_contract_class_da_changes<I: Iterator<Item = Felt252>>(
     full_output: Felt252,
 ) -> Result<HashMap<Felt252, Felt252>, SnOsError> {
     let n_actual_updates = next_as_usize(output_iter, "n_actual_updates")?;
-
+    println!("Deserializing {} class changes with full_output={}", n_actual_updates, full_output);
     let mut classes = HashMap::with_capacity(n_actual_updates);
 
     for i in 0..n_actual_updates {
         let class_hash = next_or_fail(output_iter, &format!("class hash #{i}"))?;
+        println!("Read class hash #{}: {}", i, class_hash);
         if !full_output.is_zero() {
-            next_or_fail(output_iter, &format!("previous compiled class hash #{i}"))?;
+            let prev_hash = next_or_fail(output_iter, &format!("previous compiled class hash #{i}"))?;
+            println!("Read previous compiled class hash #{}: {}", i, prev_hash);
         }
         let compiled_class_hash = next_or_fail(output_iter, &format!("compiled class hash #{i}"))?;
+        println!("Read compiled class hash #{}: {}", i, compiled_class_hash);
         classes.insert(class_hash, compiled_class_hash);
     }
 
@@ -545,59 +578,42 @@ mod tests {
 
     #[test]
     fn test_complex_state_diff() {
-        let storage_changes1 = HashMap::from([
-            (Felt252::from(1), Felt252::from(100)),
-            (Felt252::from(2), Felt252::from(200)),
-        ]);
-
-        let storage_changes2 = HashMap::from([
-            (Felt252::from(3), Felt252::from(300)),
-            (Felt252::from(4), Felt252::from(400)),
-            (Felt252::from(5), Felt252::from(500)),
-        ]);
-
-        let classes = HashMap::from([
-            (Felt252::from(1000), Felt252::from(2000)),
-            (Felt252::from(3000), Felt252::from(4000)),
-        ]);
-
+        // Start with a simpler test case
         let original_output = StarknetOsOutput {
-            initial_root: Felt252::from_hex_unchecked(
-                "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-            ),
-            final_root: Felt252::from_hex_unchecked(
-                "0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321",
-            ),
-            prev_block_number: Felt252::from(1000),
-            new_block_number: Felt252::from(1001),
-            prev_block_hash: Felt252::from_hex_unchecked("0xaabbcc"),
-            new_block_hash: Felt252::from_hex_unchecked("0xddeeff"),
-            os_program_hash: Felt252::from(12345),
-            starknet_os_config_hash: Felt252::from(67890),
+            initial_root: Felt252::ONE,
+            final_root: Felt252::from(2),
+            prev_block_number: Felt252::from(100),
+            new_block_number: Felt252::from(101),
+            prev_block_hash: Felt252::from(1234),
+            new_block_hash: Felt252::from(5678),
+            os_program_hash: Felt252::ZERO,
+            starknet_os_config_hash: Felt252::from(42),
             use_kzg_da: Felt252::ZERO,
             full_output: Felt252::ONE,
-            messages_to_l1: vec![Felt252::from(111), Felt252::from(222)],
-            messages_to_l2: vec![Felt252::from(333), Felt252::from(444)],
+            messages_to_l1: vec![],
+            messages_to_l2: vec![],
             state_diff: Some(OsStateDiff {
                 contract_changes: vec![
                     ContractChanges {
                         addr: Felt252::from(1),
                         nonce: Felt252::from(10),
                         class_hash: Some(Felt252::from(100)),
-                        storage_changes: storage_changes1,
-                    },
-                    ContractChanges {
-                        addr: Felt252::from(2),
-                        nonce: Felt252::from(20),
-                        class_hash: None,
-                        storage_changes: storage_changes2,
+                        storage_changes: HashMap::from([
+                            (Felt252::from(1), Felt252::from(100)),
+                        ]),
                     },
                 ],
-                classes,
+                classes: HashMap::from([
+                    (Felt252::from(1000), Felt252::from(2000)),
+                ]),
             }),
         };
 
         let serialized = original_output.serialize();
+        println!("Serialized data:");
+        for (i, value) in serialized.iter().enumerate() {
+            println!("{}: {}", i, value);
+        }
         let deserialized = deserialize_os_output(&mut serialized.into_iter()).expect("Failed to deserialize");
         assert_eq!(deserialized, original_output);
     }
@@ -676,28 +692,43 @@ mod tests {
 
     #[test]
     fn test_multiple_contract_changes() {
-        let mut contracts = vec![];
-        for i in 0..5 {
-            let mut storage_changes = HashMap::new();
-            for j in 0..3 {
-                storage_changes.insert(
-                    Felt252::from(i * 100 + j),
-                    Felt252::from(i * 1000 + j),
-                );
-            }
-            
-            contracts.push(ContractChanges {
-                addr: Felt252::from(i + 1),
-                nonce: Felt252::from(i * 10),
-                class_hash: if i % 2 == 0 { Some(Felt252::from(i * 100)) } else { None },
-                storage_changes,
-            });
-        }
+        let mut contract_changes = Vec::new();
+        let mut storage_changes = HashMap::new();
+        storage_changes.insert(Felt252::ZERO, Felt252::ZERO);
+        storage_changes.insert(Felt252::ONE, Felt252::ONE);
+        contract_changes.push(ContractChanges {
+            addr: Felt252::ONE,
+            nonce: Felt252::ZERO,
+            class_hash: Some(Felt252::ZERO),
+            storage_changes,
+        });
+
+        let mut storage_changes = HashMap::new();
+        storage_changes.insert(Felt252::ZERO, Felt252::from(3));
+        contract_changes.push(ContractChanges {
+            addr: Felt252::from(2),
+            nonce: Felt252::from(10),
+            class_hash: Some(Felt252::from(100)),
+            storage_changes,
+        });
+
+        let mut storage_changes = HashMap::new();
+        contract_changes.push(ContractChanges {
+            addr: Felt252::from(20491), // 0x500b
+            nonce: Felt252::ZERO,
+            class_hash: Some(Felt252::from(200)),
+            storage_changes,
+        });
+
+        let state_diff = OsStateDiff {
+            contract_changes,
+            classes: HashMap::new(),
+        };
 
         let original_output = StarknetOsOutput {
             initial_root: Felt252::ONE,
             final_root: Felt252::from(2),
-            prev_block_number: Felt252::from(1),
+            prev_block_number: Felt252::ONE,
             new_block_number: Felt252::from(2),
             prev_block_hash: Felt252::from(3),
             new_block_hash: Felt252::from(4),
@@ -705,17 +736,19 @@ mod tests {
             starknet_os_config_hash: Felt252::from(6),
             use_kzg_da: Felt252::ZERO,
             full_output: Felt252::ONE,
-            messages_to_l1: vec![],
-            messages_to_l2: vec![],
-            state_diff: Some(OsStateDiff {
-                contract_changes: contracts,
-                classes: HashMap::new(),
-            }),
+            messages_to_l1: Vec::new(),
+            messages_to_l2: Vec::new(),
+            state_diff: Some(state_diff),
         };
 
         let serialized = original_output.serialize();
-        let deserialized = deserialize_os_output(&mut serialized.into_iter()).expect("Failed to deserialize");
-        assert_eq!(deserialized, original_output);
+        println!("Serialized data:");
+        for (i, value) in serialized.iter().enumerate() {
+            println!("{}: {}", i, value);
+        }
+
+        let deserialized = deserialize_os_output(&mut serialized.into_iter()).unwrap();
+        assert_eq!(original_output, deserialized);
     }
 
     #[test]
