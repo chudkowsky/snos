@@ -32,6 +32,8 @@ pub struct StarknetOsInput {
     pub new_block_hash: Felt252,
     pub prev_block_hash: Felt252,
     pub full_output: bool,
+    pub shard_contract_address: Option<Felt252>,
+    pub slots: Option<Vec<Felt252>>,
 }
 
 impl StarknetOsInput {

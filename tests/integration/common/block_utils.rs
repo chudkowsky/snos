@@ -214,6 +214,8 @@ where
         new_block_hash: Default::default(),
         prev_block_hash: Default::default(),
         full_output: !block_context.block_info().use_kzg_da,
+        shard_contract_address: None,
+        slots: None,
     });
 
     let execution_helper = ExecutionHelperWrapper::new(

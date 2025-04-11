@@ -11,6 +11,8 @@ use error::SnOsError;
 use execution::deprecated_syscall_handler::DeprecatedOsSyscallHandlerWrapper;
 use execution::helper::ExecutionHelperWrapper;
 use io::output::StarknetOsOutput;
+use io::shard_output::ShardOsOutput;
+use serde::{Deserialize, Serialize};
 
 use crate::execution::syscall_handler::OsSyscallHandlerWrapper;
 use crate::hints::types::{PatriciaSkipValidationRunner, PatriciaTreeMode};
@@ -31,13 +33,20 @@ pub mod starkware_utils;
 pub mod storage;
 pub mod utils;
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum OsOutput {
+    Starknet(StarknetOsOutput),
+    Shard(ShardOsOutput),
+}
+
 pub fn run_os<PCS>(
     compiled_os: &[u8],
     layout: LayoutName,
     os_input: Rc<StarknetOsInput>,
     block_context: BlockContext,
-    execution_helper: ExecutionHelperWrapper<PCS>,
-) -> Result<(CairoPie, StarknetOsOutput), SnOsError>
+    execution_helper: ExecutionHelperWrapper<PCS>, 
+    shard: bool,
+) -> Result<(CairoPie, OsOutput), SnOsError>
 where
     PCS: PerContractStorage + 'static,
 {
@@ -98,8 +107,11 @@ where
         cairo_runner.finalize_segments().map_err(|e| SnOsError::Runner(e.into()))?;
     }
 
-    // Prepare and check expected output.
-    let os_output = StarknetOsOutput::from_run(&cairo_runner.vm)?;
+    let os_output = if shard {
+        OsOutput::Shard(ShardOsOutput::from_run(&cairo_runner.vm)?)
+    } else {
+        OsOutput::Starknet(StarknetOsOutput::from_run(&cairo_runner.vm)?)
+    };
 
     log::debug!("output: {}", serde_json::to_string_pretty(&os_output).unwrap());
 

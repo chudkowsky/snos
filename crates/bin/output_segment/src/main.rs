@@ -48,7 +48,7 @@ async fn main() {
     log::info!("Runnin SNOS for block number: {}", block_number);
 
     let (snos_pie, _snos_output) =
-        prove_block(DEFAULT_COMPILED_OS, block_number, &endpoint, LayoutName::all_cairo, true)
+        prove_block(DEFAULT_COMPILED_OS, block_number, &endpoint, LayoutName::all_cairo, true, None, None, false)
             .await
             .map_err(debug_prove_error)
             .expect("OS generate Cairo PIE");

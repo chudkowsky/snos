@@ -84,7 +84,7 @@ impl StarknetOsOutput {
 
 /// Gets the output base segment and the output size from the VM return values and the VM
 /// output builtin.
-fn get_output_info(vm: &VirtualMachine) -> Result<(usize, usize), SnOsError> {
+pub fn get_output_info(vm: &VirtualMachine) -> Result<(usize, usize), SnOsError> {
     let n_builtins = vm.get_builtin_runners().len();
     let builtin_end_ptrs = vm.get_return_values(n_builtins).map_err(|e| SnOsError::CatchAll(e.to_string()))?;
     let output_base = vm
@@ -112,7 +112,7 @@ fn get_output_info(vm: &VirtualMachine) -> Result<(usize, usize), SnOsError> {
 }
 
 /// Gets the OS output as an array of felts based on the output base and size.
-fn get_raw_output(vm: &VirtualMachine, output_base: usize, output_size: usize) -> Result<Vec<Felt252>, SnOsError> {
+pub fn get_raw_output(vm: &VirtualMachine, output_base: usize, output_size: usize) -> Result<Vec<Felt252>, SnOsError> {
     // Get output and check that everything is an integer.
     let raw_output = vm.get_range((output_base as isize, 0).into(), output_size);
     let raw_output: Result<Vec<Felt252>, _> = raw_output
@@ -269,7 +269,7 @@ where
     Ok((messages_to_l1, messages_to_l2))
 }
 
-fn read_segment<I: Iterator<Item = Felt252>>(
+pub fn read_segment<I: Iterator<Item = Felt252>>(
     output_iter: &mut I,
     length: usize,
     item_name: &str,
@@ -286,7 +286,7 @@ fn read_segment<I: Iterator<Item = Felt252>>(
     Ok(segment)
 }
 
-fn deserialize_os_state_diff<I: Iterator<Item = Felt252>>(
+pub fn deserialize_os_state_diff<I: Iterator<Item = Felt252>>(
     output_iter: &mut I,
     full_output: Felt252,
 ) -> Result<Option<OsStateDiff>, SnOsError> {

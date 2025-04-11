@@ -1,6 +1,7 @@
 pub mod classes;
 pub mod input;
 pub mod output;
+pub mod shard_output;
 
 use cairo_vm::Felt252;
 use serde::{Deserialize, Serialize};

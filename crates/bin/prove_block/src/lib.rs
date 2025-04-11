@@ -24,13 +24,12 @@ use starknet_os::crypto::poseidon::PoseidonHash;
 use starknet_os::error::SnOsError::{self};
 use starknet_os::execution::helper::{ContractStorageMap, ExecutionHelperWrapper};
 use starknet_os::io::input::StarknetOsInput;
-use starknet_os::io::output::StarknetOsOutput;
-use starknet_os::run_os;
 use starknet_os::starknet::business_logic::fact_state::contract_state_objects::ContractState;
 use starknet_os::starknet::starknet_storage::CommitmentInfo;
 use starknet_os::starkware_utils::commitment_tree::base_types::Height;
 use starknet_os::starkware_utils::commitment_tree::errors::TreeError;
 use starknet_os::starkware_utils::commitment_tree::patricia_tree::patricia_tree::PatriciaTree;
+use starknet_os::{run_os, OsOutput};
 use starknet_os_types::chain_id::chain_id_from_felt;
 use starknet_os_types::error::ContractClassError;
 use starknet_os_types::starknet_core_addons::LegacyContractDecompressionError;
@@ -118,7 +117,10 @@ pub async fn prove_block(
     rpc_provider: &str,
     layout: LayoutName,
     full_output: bool,
-) -> Result<(CairoPie, StarknetOsOutput), ProveBlockError> {
+    shard_contract_address: Option<Felt252>,
+    slots: Option<Vec<Felt252>>,
+    shard: bool,
+) -> Result<(CairoPie, OsOutput), ProveBlockError> {
     log::info!("Preparing inputs for block {}", block_number);
 
     let block_id = BlockId::Number(block_number);
@@ -372,8 +374,9 @@ pub async fn prove_block(
         new_block_hash: block_with_txs.block_hash,
         prev_block_hash: previous_block_hash,
         full_output,
+        shard_contract_address,
+        slots,
     });
-
     let execution_helper = ExecutionHelperWrapper::<ProverPerContractStorage>::new(
         contract_storages,
         tx_execution_infos,
@@ -383,7 +386,7 @@ pub async fn prove_block(
 
     log::info!("Running OS for block {}", block_number);
 
-    let os_output = run_os(compiled_os, layout, os_input, block_context, execution_helper)?;
+    let os_output = run_os(compiled_os, layout, os_input, block_context, execution_helper, shard)?;
 
     log::info!("OS finished running for block {}", block_number);
 
