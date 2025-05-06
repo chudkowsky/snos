@@ -44,7 +44,7 @@ pub fn run_os<PCS>(
     layout: LayoutName,
     os_input: Rc<StarknetOsInput>,
     block_context: BlockContext,
-    execution_helper: ExecutionHelperWrapper<PCS>, 
+    execution_helper: ExecutionHelperWrapper<PCS>,
     shard: bool,
 ) -> Result<(CairoPie, OsOutput), SnOsError>
 where

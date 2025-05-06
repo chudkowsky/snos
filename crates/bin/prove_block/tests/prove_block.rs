@@ -92,10 +92,11 @@ const DEFAULT_COMPILED_OS: &[u8] = include_bytes!("../../../../build/os_latest.j
 #[tokio::test(flavor = "multi_thread")]
 async fn test_prove_selected_blocks(#[case] block_number: u64) {
     let endpoint = std::env::var("PATHFINDER_RPC_URL").expect("Missing PATHFINDER_RPC_URL in env");
-    let (snos_pie, _snos_output) = prove_block(DEFAULT_COMPILED_OS, block_number, &endpoint, LayoutName::all_cairo, true, None, None, false)
-        .await
-        .map_err(debug_prove_error)
-        .expect("OS generate Cairo PIE");
+    let (snos_pie, _snos_output) =
+        prove_block(DEFAULT_COMPILED_OS, block_number, &endpoint, LayoutName::all_cairo, true, None, None, false)
+            .await
+            .map_err(debug_prove_error)
+            .expect("OS generate Cairo PIE");
     snos_pie.run_validity_checks().expect("Valid SNOS PIE");
 
     if let Some(reference_pie_bytes) = get_reference_pie_bytes(block_number) {

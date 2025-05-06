@@ -263,6 +263,7 @@ fn hints<PCS>() -> HashMap<String, HintImpl> where
     hints.insert(compression::SET_DECOMPRESSED_DST.into(), compression::set_decompressed_dst);
     hints.insert(INITIALIZE_CONTRACT_ADDRESS_TO_SHARD.into(), initialize_contract_address_to_shard);
     hints.insert(INITIALIZE_SLOTS.into(), initialize_slots);
+    hints.insert(SORT_ARRAY.into(), sort_array);
     hints
 }
 
@@ -500,7 +501,8 @@ pub fn initialize_slots(
     let slots = os_input.slots.clone().unwrap_or(vec![]);
     let slots_ptr = get_ptr_from_var_name(vars::ids::SLOTS, vm, ids_data, ap_tracking)?;
     for (i, slot) in slots.iter().enumerate() {
-        vm.insert_value((slots_ptr + i as i32)?, slot)?;
+        vm.insert_value((slots_ptr + (i * 2) as i32)?, slot.0)?;
+        vm.insert_value((slots_ptr + (i * 2 + 1) as i32)?, slot.1)?;
     }
     insert_value_from_var_name(vars::ids::SLOTS_LEN, Felt252::from(slots.len()), vm, ids_data, ap_tracking)?;
     Ok(())
@@ -539,6 +541,41 @@ pub fn initialize_state_changes(
     Ok(())
 }
 
+pub const SORT_ARRAY: &str = indoc! {
+    r#"
+        array_len = ids.array_len
+        array = []
+        for i in range(array_len):
+            array.append(memory[ids.array+i])
+        array.sort()
+        for i in range(array_len):
+            memory[ids.sorted_array_1+i] = array[i]"#
+};
+
+pub fn sort_array(
+    vm: &mut VirtualMachine,
+    _exec_scopes: &mut ExecutionScopes,
+    ids_data: &HashMap<String, HintReference>,
+    ap_tracking: &ApTracking,
+    _constants: &HashMap<String, Felt252>,
+) -> Result<(), HintError> {
+    let result_array_ptr = get_ptr_from_var_name("sorted_array_1", vm, ids_data, ap_tracking)?;
+    let test = get_ptr_from_var_name("array", vm, ids_data, ap_tracking)?;
+    let array_len = get_integer_from_var_name("array_len", vm, ids_data, ap_tracking)?;
+    let mut elements = Vec::new();
+    for i in 0..array_len.try_into().unwrap() {
+        let element = vm.get_integer((test + i)?).unwrap().into_owned();
+        elements.push(element);
+    }
+    elements.sort();
+    elements.reverse();
+
+    for i in 0..array_len.try_into().unwrap() {
+        vm.insert_value((result_array_ptr + i)?, elements[i]).unwrap();
+    }
+
+    Ok(())
+}
 pub const INITIALIZE_CLASS_HASHES: &str = "initial_dict = os_input.class_hash_to_compiled_class_hash";
 
 pub fn initialize_class_hashes(

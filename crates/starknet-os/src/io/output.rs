@@ -40,8 +40,6 @@ pub struct ContractChanges {
 pub struct OsStateDiff {
     /// The list of contracts that were changed.
     pub contract_changes: Vec<ContractChanges>,
-    /// The list of classes that were declared. A map from class hash to compiled class hash.
-    pub classes: HashMap<Felt252, Felt252>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -228,27 +226,6 @@ fn deserialize_contract_state<I: Iterator<Item = Felt252>>(
     Ok(contract_changes)
 }
 
-// Reverse of output_contract_class_da_changes in state/output.cairo
-fn deserialize_contract_class_da_changes<I: Iterator<Item = Felt252>>(
-    output_iter: &mut I,
-    full_output: Felt252,
-) -> Result<HashMap<Felt252, Felt252>, SnOsError> {
-    let n_actual_updates = next_as_usize(output_iter, "n_actual_updates")?;
-
-    let mut classes = HashMap::with_capacity(n_actual_updates);
-
-    for i in 0..n_actual_updates {
-        let class_hash = next_or_fail(output_iter, &format!("class hash #{i}"))?;
-        if !full_output.is_zero() {
-            next_or_fail(output_iter, &format!("previous compiled class hash #{i}"))?;
-        }
-        let compiled_class_hash = next_or_fail(output_iter, &format!("compiled class hash #{i}"))?;
-        classes.insert(class_hash, compiled_class_hash);
-    }
-
-    Ok(classes)
-}
-
 // Reverse of serialize_messages in os/output.cairo
 fn deserialize_messages<I>(output_iter: &mut I) -> Result<(Vec<Felt252>, Vec<Felt252>), SnOsError>
 where
@@ -301,9 +278,8 @@ pub fn deserialize_os_state_diff<I: Iterator<Item = Felt252>>(
     // Contract changes
     let contract_changes = deserialize_contract_state(&mut output_iter, full_output)?;
     // Class changes
-    let classes = deserialize_contract_class_da_changes(&mut output_iter, full_output)?;
 
-    Ok(Some(OsStateDiff { contract_changes, classes }))
+    Ok(Some(OsStateDiff { contract_changes }))
 }
 
 // Reverse of serialize_os_output in os/output.cairo
@@ -407,7 +383,6 @@ mod tests {
                         ),
                     ]),
                 }],
-                classes: Default::default(),
             }),
         };
 

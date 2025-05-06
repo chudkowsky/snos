@@ -118,7 +118,7 @@ pub async fn prove_block(
     layout: LayoutName,
     full_output: bool,
     shard_contract_address: Option<Felt252>,
-    slots: Option<Vec<Felt252>>,
+    slots: Option<Vec<(Felt252, Felt252)>>,
     shard: bool,
 ) -> Result<(CairoPie, OsOutput), ProveBlockError> {
     log::info!("Preparing inputs for block {}", block_number);
