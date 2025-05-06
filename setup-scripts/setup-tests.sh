@@ -13,7 +13,8 @@ if ! command -v starknet-compile-deprecated >/dev/null; then
 fi
 
 echo -e "\ninitializing cairo-lang($CAIRO_VER)...\n"
-git submodule update --init
+git submodule update --init && cd cairo-lang && git checkout feat/sharding && cd ..
+
 
 FETCHED_CAIRO_VER="$(cat cairo-lang/src/starkware/cairo/lang/VERSION)"
 
