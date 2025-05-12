@@ -8,8 +8,7 @@ use crate::error::SnOsError;
 
 const USE_KZG_DA_OFFSET: usize = 0;
 const FULL_OUTPUT_OFFSET: usize = 1;
-const MERKLE_TREE_ROOT_OFFSET: usize = 2;
-const HEADER_SIZE: usize = 3;
+const HEADER_SIZE: usize = 2;
 const KZG_N_BLOBS_OFFSET: usize = 1;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -18,8 +17,6 @@ pub struct ShardOsOutput {
     pub use_kzg_da: Felt252,
     /// Indicates whether previous state values are included in the state update information.
     pub full_output: Felt252,
-    /// The merkle tree root of the state diff.
-    pub merkle_tree_root: Felt252,
     /// The state diff.
     pub state_diff: Option<OsStateDiff>,
 }
@@ -40,7 +37,6 @@ where
     let header = read_segment(output_iter, HEADER_SIZE, "header elements")?;
     let use_kzg_da = header[USE_KZG_DA_OFFSET];
     let full_output = header[FULL_OUTPUT_OFFSET];
-    let merkle_tree_root = header[MERKLE_TREE_ROOT_OFFSET];
     if !use_kzg_da.is_zero() {
         // Skip KZG data.
         let kzg_segment: Vec<_> = output_iter.by_ref().take(2).collect();
@@ -57,7 +53,7 @@ where
     let state_diff =
         if use_kzg_da == Felt252::ZERO { deserialize_os_state_diff(output_iter, full_output)? } else { None };
 
-    Ok(ShardOsOutput { use_kzg_da, full_output, merkle_tree_root, state_diff })
+    Ok(ShardOsOutput { use_kzg_da, full_output, state_diff })
 }
 
 #[cfg(test)]
@@ -73,10 +69,10 @@ mod tests {
         let os_output = ShardOsOutput {
             use_kzg_da: Felt252::ONE,
             full_output: Felt252::ZERO,
-            merkle_tree_root: Felt252::ZERO,
             state_diff: Some(OsStateDiff {
                 contract_changes: vec![ContractChanges {
                     addr: Felt252::ONE,
+                    merkle_hash: Felt252::from_hex_unchecked("0x123456"),
                     nonce: Felt252::from(100),
                     class_hash: None,
                     storage_changes: HashMap::from([

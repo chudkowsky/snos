@@ -28,6 +28,8 @@ const KZG_N_BLOBS_OFFSET: usize = 1;
 pub struct ContractChanges {
     /// The address of the contract.
     pub addr: Felt252,
+    /// The merkle hash of the contract and its slots.
+    pub merkle_hash: Felt252,
     /// The new nonce of the contract (for account contracts).
     pub nonce: Felt252,
     /// The new class hash (if changed).
@@ -152,6 +154,7 @@ fn deserialize_contract_state_inner<I: Iterator<Item = Felt252>>(
         Felt252::from(1u128 << 1).try_into().expect("2**1 should be considered non-zero. Did you change the value?");
 
     let addr = next_or_fail(output_iter, "contract change addr")?;
+    let merkle_hash = next_or_fail(output_iter, "contract change merkle_hash")?;
     let nonce_n_changes_two_flags = next_or_fail(output_iter, "contract nonce_n_changes_two_flags")?;
 
     // Parse flags
@@ -188,7 +191,7 @@ fn deserialize_contract_state_inner<I: Iterator<Item = Felt252>>(
         n_changes.to_usize().expect("n_updates should be 8 or 64-bit by definition. Did you modify the parsing above?");
     let storage_changes = deserialize_da_changes(output_iter, n_changes, full_output)?;
 
-    Ok(ContractChanges { addr, nonce: new_state_nonce, class_hash: new_state_class_hash, storage_changes })
+    Ok(ContractChanges { addr, merkle_hash, nonce: new_state_nonce, class_hash: new_state_class_hash, storage_changes })
 }
 
 // Reverse of serialize_da_changes in state/output.cairo
@@ -216,6 +219,7 @@ fn deserialize_contract_state<I: Iterator<Item = Felt252>>(
     output_iter: &mut I,
     full_output: Felt252,
 ) -> Result<Vec<ContractChanges>, SnOsError> {
+    
     let output_n_updates = next_as_usize(output_iter, "output_n_updates")?;
     let mut contract_changes = Vec::with_capacity(output_n_updates);
 
@@ -366,6 +370,7 @@ mod tests {
             state_diff: Some(OsStateDiff {
                 contract_changes: vec![ContractChanges {
                     addr: Felt252::ONE,
+                    merkle_hash: Felt252::from_hex_unchecked("0x123456"),
                     nonce: Felt252::from(100),
                     class_hash: None,
                     storage_changes: HashMap::from([
