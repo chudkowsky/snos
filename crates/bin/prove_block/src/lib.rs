@@ -23,7 +23,7 @@ use starknet_os::crypto::pedersen::PedersenHash;
 use starknet_os::crypto::poseidon::PoseidonHash;
 use starknet_os::error::SnOsError::{self};
 use starknet_os::execution::helper::{ContractStorageMap, ExecutionHelperWrapper};
-use starknet_os::io::input::StarknetOsInput;
+use starknet_os::io::input::{Crdt, StarknetOsInput};
 use starknet_os::starknet::business_logic::fact_state::contract_state_objects::ContractState;
 use starknet_os::starknet::starknet_storage::CommitmentInfo;
 use starknet_os::starkware_utils::commitment_tree::base_types::Height;
@@ -117,8 +117,7 @@ pub async fn prove_block(
     rpc_provider: &str,
     layout: LayoutName,
     full_output: bool,
-    shard_contract_address: Option<Felt252>,
-    slots: Option<Vec<(Felt252, Felt252)>>,
+    crdts: Vec<Crdt>,
     shard: bool,
 ) -> Result<(CairoPie, OsOutput), ProveBlockError> {
     log::info!("Preparing inputs for block {}", block_number);
@@ -374,8 +373,7 @@ pub async fn prove_block(
         new_block_hash: block_with_txs.block_hash,
         prev_block_hash: previous_block_hash,
         full_output,
-        shard_contract_address,
-        slots,
+        crdts,
     });
     let execution_helper = ExecutionHelperWrapper::<ProverPerContractStorage>::new(
         contract_storages,

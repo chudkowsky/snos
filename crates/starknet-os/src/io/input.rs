@@ -32,8 +32,18 @@ pub struct StarknetOsInput {
     pub new_block_hash: Felt252,
     pub prev_block_hash: Felt252,
     pub full_output: bool,
-    pub shard_contract_address: Option<Felt252>,
-    pub slots: Option<Vec<(Felt252, Felt252)>>,
+    pub crdts: Vec<Crdt>,
+}
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub struct Crdt{
+    pub address: Felt252,
+    pub slot_len: Felt252,
+    pub slots: Vec<Slot>,
+}
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub struct Slot{
+    pub key: Felt252,
+    pub crdt_type: Felt252,
 }
 
 impl StarknetOsInput {

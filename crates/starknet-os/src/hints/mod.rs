@@ -261,7 +261,6 @@ fn hints<PCS>() -> HashMap<String, HintImpl> where
     hints.insert(compression::GET_PREV_OFFSET.into(), compression::get_prev_offset);
     hints.insert(compression::COMPRESSION_HINT.into(), compression::compression_hint);
     hints.insert(compression::SET_DECOMPRESSED_DST.into(), compression::set_decompressed_dst);
-    hints.insert(INITIALIZE_CONTRACT_ADDRESS_TO_SHARD.into(), initialize_contract_address_to_shard);
     hints.insert(INITIALIZE_SLOTS.into(), initialize_slots);
     hints.insert(SORT_ARRAY.into(), sort_array);
     hints
@@ -467,27 +466,6 @@ pub fn starknet_os_input(
     vm.insert_value(messages_to_l2, temp_segment).map_err(|e| e.into())
 }
 
-pub const INITIALIZE_CONTRACT_ADDRESS_TO_SHARD: &str =
-    "ids.contract_address_to_shard = os_input.contract_address_to_shard";
-
-pub fn initialize_contract_address_to_shard(
-    vm: &mut VirtualMachine,
-    exec_scopes: &mut ExecutionScopes,
-    ids_data: &HashMap<String, HintReference>,
-    ap_tracking: &ApTracking,
-    _constants: &HashMap<String, Felt252>,
-) -> Result<(), HintError> {
-    let os_input = exec_scopes.get::<Rc<StarknetOsInput>>(vars::scopes::OS_INPUT)?;
-    insert_value_from_var_name(
-        vars::ids::CONTRACT_ADDRESS_TO_SHARD,
-        os_input.shard_contract_address.unwrap_or(Felt252::ZERO),
-        vm,
-        ids_data,
-        ap_tracking,
-    )?;
-    Ok(())
-}
-
 pub const INITIALIZE_SLOTS: &str = "ids.slots = os_input.slots;ids.slots_len = len(ids.slots)";
 
 pub fn initialize_slots(
@@ -498,13 +476,37 @@ pub fn initialize_slots(
     _constants: &HashMap<String, Felt252>,
 ) -> Result<(), HintError> {
     let os_input = exec_scopes.get::<Rc<StarknetOsInput>>(vars::scopes::OS_INPUT)?;
-    let slots = os_input.slots.clone().unwrap_or(vec![]);
-    let slots_ptr = get_ptr_from_var_name(vars::ids::SLOTS, vm, ids_data, ap_tracking)?;
-    for (i, slot) in slots.iter().enumerate() {
-        vm.insert_value((slots_ptr + (i * 2) as i32)?, slot.0)?;
-        vm.insert_value((slots_ptr + (i * 2 + 1) as i32)?, slot.1)?;
-    }
-    insert_value_from_var_name(vars::ids::SLOTS_LEN, Felt252::from(slots.len()), vm, ids_data, ap_tracking)?;
+    let crdts = &os_input.crdts;
+    let crdts_len = crdts.len();
+    insert_value_from_var_name("crdts_len", Felt252::from(crdts_len), vm, ids_data, ap_tracking)?;
+
+    let crdts_ptr = get_ptr_from_var_name("crdts", vm, ids_data, ap_tracking)?;
+    for (i,crdt) in crdts.iter().enumerate(){
+        vm.insert_value((crdts_ptr+(i*3))?,crdt.address)?;
+        vm.insert_value((crdts_ptr+((i*3)+1))?,crdt.slot_len)?;
+        let temp_segment = vm.add_memory_segment();
+        vm.insert_value((crdts_ptr+((i*3)+2))?,temp_segment)?;
+        for (j,slot) in crdt.slots.iter().enumerate(){
+            vm.insert_value((temp_segment+(j*2))?,slot.key)?;
+            vm.insert_value((temp_segment+((j*2)+1))?,slot.crdt_type)?;
+        }
+    }    
+    // vm.insert_value(crdts_ptr,Felt252::from_hex_unchecked("0x2e7442625bab778683501c0eadbc1ea17b3535da040a12ac7d281066e915eea"))?; //crdts_len
+    // vm.insert_value((crdts_ptr+1)?,1)?; //crdts_len
+    // let temp_segment = vm.add_memory_segment();
+    // vm.insert_value((crdts_ptr+2)?,temp_segment)?; //crdts_len
+    // vm.insert_value((temp_segment+0)?,Felt252::from_hex_unchecked("0x67840c21d0d3cba9ed504d8867dffe868f3d43708cfc0d7ed7980b511850070"))?; //crdts_len
+    // vm.insert_value((temp_segment+1)?,Felt252::from_hex_unchecked("0x1"))?; //crdts_len
+    // vm.insert_value((crdts_ptr+3)?,Felt252::from_hex_unchecked("0x325d09afe0dc15dc14967380e0017fad1f89e5ad8cc5663655f0637fdbbd01e"))?; //crdt_address
+    // vm.insert_value((crdts_ptr+4)?,Felt252::from_hex_unchecked("0x2"))?; //crdt_len
+    // let temp_segment = vm.add_memory_segment();
+    // vm.insert_value((crdts_ptr+5)?,temp_segment)?; //crdts_len
+    // vm.insert_value((temp_segment+0)?,Felt252::from_hex_unchecked("0x732ee9e7854af00ca86db8a297bb9f5e4da117ea0d934e18acd977d3b0a2a27"))?; //crdts_len
+    // vm.insert_value((temp_segment+1)?,Felt252::from_hex_unchecked("0x2"))?; //crdts_len
+    // vm.insert_value((temp_segment+2)?, Felt252::from_hex_unchecked("0x14de346fc4242ec4a43f4f2371dfae05680721698b5bba61a6f87c2fcf72de8"))?;
+    // vm.insert_value((temp_segment+3)?, Felt252::from_hex_unchecked("0x1"))?;
+    
+
     Ok(())
 }
 
